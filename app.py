@@ -3,88 +3,67 @@ import yfinance as yf
 import pandas as pd
 from textblob import TextBlob
 import requests
-import time
-
-# הגדרות עמוד וריענון אוטומטי כל 30 שניות
-st.set_page_config(page_title="Real-Time AI Trader", layout="wide")
-
-# פונקציה לשליחת הודעה לטלגרם
-def send_telegram_msg(message):
-    token = "8553256276:AAG2AWkV_cssOAnlWe8MUChR-MQ8VgFJ1ZY-API Token מ-BotFather
-    chat_id = "8553256276:AAG2AWkV_cssOAnlWe8MUChR-MQ8VgFJ1ZY-Chat ID שלך
-    url = f"https://api.telegram.org/bot{token}/sendMessage?chat_id={chat_id}&text={message}"
-    try:
-        requests.get(url)
-    except:
-        pass
-
-st.title("🚀 מסחר חכם בזמן אמת (ריענון כל 30 שניות)")
-
-# ריענון אוטומטי בעזרת רכיב Streamlit
 from streamlit_autorefresh import st_autorefresh
-st_autorefresh(interval=30 * 1000, key="datarefresh")
 
-# סרגל צד
+# ריענון אוטומטי כל 30 שניות
+st.set_page_config(page_title="AI Trading Bot", layout="wide")
+st_autorefresh(interval=30 * 1000, key="refresh")
+
+# פונקציית טלגרם - כאן תכניס את ה-ID שלך
+def send_telegram(message):
+    token = "8553256276:AAG2AWkV_cssOAnlWe8MUChR-MQ8VgFJ1ZY" # הטוקן מהתמונה שלך
+    chat_id = "כאן_שים_את_ה-ID_שלך" # חובה להכניס את ה-ID שקיבלת מ-GetIDBot
+    url = f"https://api.telegram.org/bot{token}/sendMessage?chat_id={chat_id}&text={message}"
+    try: requests.get(url, timeout=5)
+    except: pass
+
+st.title("📈 מערכת מסחר בזמן אמת + התראות")
+
+# תפריט צד
 ticker = st.sidebar.text_input("הכנס סימול (למשל NVDA):", value="NVDA").upper().strip()
-alert_up = st.sidebar.number_input("התראת עלייה (מחיר יעד):", value=0.0)
-alert_down = st.sidebar.number_input("התראת ירידה (מחיר הגנה):", value=0.0)
-
-def get_live_data(ticker):
-    try:
-        stock = yf.Ticker(ticker)
-        # מחיר בזמן אמת
-        data = stock.history(period="1d", interval="1m")
-        current_price = data['Close'].iloc[-1]
-        prev_close = stock.info.get('previousClose', current_price)
-        change_pct = ((current_price - prev_close) / prev_close) * 100
-        
-        # דוחות וחדשות
-        news = stock.news
-        fin = stock.financials
-        
-        return current_price, change_pct, news, fin, data
-    except:
-        return None, None, None, None, None
+target_price = st.sidebar.number_input("התראת מחיר ($):", value=0.0)
 
 if ticker:
-    price, change, news, fin, hist_data = get_live_data(ticker)
+    # משיכת נתונים
+    stock = yf.Ticker(ticker)
+    data = stock.history(period="1d", interval="1m")
     
-    if price:
-        # תצוגת מחיר גדולה
-        color = "normal" if change == 0 else "inverse" if change < 0 else "normal"
-        st.metric(f"מחיר נוכחי {ticker}", f"${price:.2f}", f"{change:.2f}%")
-
-        # בדיקת התראות ושליחה לטלגרם
-        if alert_up > 0 and price >= alert_up:
-            send_telegram_msg(f"🚀 התראת מכירה! {ticker} הגיעה למחיר יעד: ${price:.2f}")
-            st.toast("התראה נשלחה לטלגרם!")
-        
-        if alert_down > 0 and price <= alert_down:
-            send_telegram_msg(f"⚠️ התראת הגנה! {ticker} ירדה למחיר: ${price:.2f}")
-            st.toast("התראה נשלחה לטלגרם!")
-
-        # --- לוגיקת המלצה (דוחות + חדשות) ---
-        st.divider()
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.subheader("📰 ניתוח חדשות (AI)")
-            if news:
-                sent_scores = [TextBlob(n.get('title', '')).sentiment.polarity for n in news[:5]]
-                avg_sent = sum(sent_scores) / len(sent_scores)
-                st.write(f"סנטימנט נוכחי: {'חיובי 🔥' if avg_sent > 0.05 else 'שלילי 📉' if avg_sent < -0.05 else 'נייטרלי 😐'}")
+    if not data.empty:
+        # טיפול בכותרות כפולות אם יש
+        if isinstance(data.columns, pd.MultiIndex):
+            data.columns = data.columns.get_level_values(0)
             
-        with col2:
-            st.subheader("📊 ניתוח דוחות")
-            if not fin.empty and 'Total Revenue' in fin.index:
-                revs = fin.loc['Total Revenue']
-                growth = (revs.iloc[0] / revs.iloc[1]) - 1
-                st.write(f"צמיחה שנתית: {growth*100:.1f}% " + ("✅" if growth > 0 else "❌"))
+        curr_price = float(data['Close'].iloc[-1])
+        st.metric(f"מחיר נוכחי {ticker}", f"${curr_price:.2f}")
 
-        # גרף דקות אחרונות
-        st.line_chart(hist_data['Close'])
+        # בדיקת התראה
+        if target_price > 0 and curr_price >= target_price:
+            send_telegram(f"🔔 התראה! {ticker} הגיעה למחיר היעד: ${curr_price:.2f}")
+            st.toast("התראה נשלחה לטלגרם!")
+
+        # המלצה מבוססת דוחות וחדשות
+        st.divider()
+        st.subheader("🤖 ניתוח והמלצה")
         
-    else:
-        st.error("לא ניתן למשוך נתונים. וודא שהסימול נכון.")
+        # סנטימנט חדשות
+        news = stock.news
+        sent = sum([TextBlob(n.get('title', '')).sentiment.polarity for n in news[:5]]) / 5 if news else 0
+        
+        # צמיחה מדוחות
+        fin = stock.financials
+        growth = "חיובית ✅" if not fin.empty and 'Total Revenue' in fin.index and fin.loc['Total Revenue'].iloc[0] > fin.loc['Total Revenue'].iloc[1] else "לא נמצאה ❌"
+        
+        # הצגת המלצה
+        if sent > 0.05 and "חיובית" in growth:
+            st.success("המלצה: BUY 🟢 (חדשות ודוחות טובים)")
+        elif sent < -0.05:
+            st.error("המלצה: AVOID 🔴 (חדשות שליליות)")
+        else:
+            st.warning("המלצה: HOLD 🟡 (נתונים מעורבים)")
 
-st.caption(f"עודכן לאחרונה: {time.strftime('%H:%M:%S')}")
+        # גרף דקות
+        st.line_chart(data['Close'])
+    else:
+        st.error("לא נמצאו נתונים. וודא שהסימול נכון.")
+
+st.caption(f"עודכן לאחרונה: {pd.Timestamp.now().strftime('%H:%M:%S')}")
