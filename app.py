@@ -4,66 +4,67 @@ import pandas as pd
 from textblob import TextBlob
 import requests
 from streamlit_autorefresh import st_autorefresh
+import datetime
 
 # ריענון אוטומטי כל 30 שניות
-st.set_page_config(page_title="AI Trading Bot", layout="wide")
-st_autorefresh(interval=30 * 1000, key="refresh")
+st.set_page_config(page_title="AI Live Trader", layout="wide")
+st_autorefresh(interval=30 * 1000, key="price_update")
 
-# פונקציית טלגרם - כאן תכניס את ה-ID שלך
 def send_telegram(message):
-    token = "8553256276:AAG2AWkV_cssOAnlWe8MUChR-MQ8VgFJ1ZY" # הטוקן מהתמונה שלך
-    chat_id = "כאן_שים_את_ה-ID_שלך" # חובה להכניס את ה-ID שקיבלת מ-GetIDBot
+    token = "8553256276:AAG2AWkV_cssOAnlWe8MUChR-MQ8VgFJ1ZY"
+    chat_id = "כאן_שים_את_ה-ID_שלך" # וודא שהכנסת את ה-ID שקיבלת מהבוט
     url = f"https://api.telegram.org/bot{token}/sendMessage?chat_id={chat_id}&text={message}"
     try: requests.get(url, timeout=5)
     except: pass
 
-st.title("📈 מערכת מסחר בזמן אמת + התראות")
+st.title("🚀 מעקב מניות בזמן אמת")
 
 # תפריט צד
-ticker = st.sidebar.text_input("הכנס סימול (למשל NVDA):", value="NVDA").upper().strip()
-target_price = st.sidebar.number_input("התראת מחיר ($):", value=0.0)
+ticker = st.sidebar.text_input("סימול מניה (למשל NVDA):", value="NVDA").upper().strip()
+target_price = st.sidebar.number_input("התראת מחיר לטלגרם ($):", value=0.0)
 
 if ticker:
-    # משיכת נתונים
+    # משיכת מחיר "חי" ללא Cache
     stock = yf.Ticker(ticker)
-    data = stock.history(period="1d", interval="1m")
     
-    if not data.empty:
-        # טיפול בכותרות כפולות אם יש
-        if isinstance(data.columns, pd.MultiIndex):
-            data.columns = data.columns.get_level_values(0)
-            
-        curr_price = float(data['Close'].iloc[-1])
-        st.metric(f"מחיר נוכחי {ticker}", f"${curr_price:.2f}")
+    try:
+        # קבלת המחיר העדכני ביותר מרשת Yahoo
+        live_price = stock.fast_info['last_price']
+        prev_close = stock.fast_info['previous_close']
+        change = ((live_price / prev_close) - 1) * 100
+
+        # תצוגה גדולה של המחיר
+        st.metric(f"מחיר נוכחי {ticker}", f"${live_price:.2f}", f"{change:.2f}%")
+        st.write(f"⏱️ עדכון אחרון: {datetime.datetime.now().strftime('%H:%M:%S')}")
 
         # בדיקת התראה
-        if target_price > 0 and curr_price >= target_price:
-            send_telegram(f"🔔 התראה! {ticker} הגיעה למחיר היעד: ${curr_price:.2f}")
-            st.toast("התראה נשלחה לטלגרם!")
+        if target_price > 0 and live_price >= target_price:
+            send_telegram(f"🔔 מטרה הושגה! {ticker} במחיר: ${live_price:.2f}")
+            st.toast("הודעה נשלחה לטלגרם!")
 
-        # המלצה מבוססת דוחות וחדשות
+        # גרף דקות אחרונות (ללא Cache)
+        hist = stock.history(period="1d", interval="1m")
+        if not hist.empty:
+            st.line_chart(hist['Close'])
+
+        # ניתוח המלצה (דוחות וחדשות)
         st.divider()
-        st.subheader("🤖 ניתוח והמלצה")
+        st.subheader("🤖 ניתוח חכם (שורה תחתונה)")
         
-        # סנטימנט חדשות
         news = stock.news
         sent = sum([TextBlob(n.get('title', '')).sentiment.polarity for n in news[:5]]) / 5 if news else 0
         
-        # צמיחה מדוחות
         fin = stock.financials
-        growth = "חיובית ✅" if not fin.empty and 'Total Revenue' in fin.index and fin.loc['Total Revenue'].iloc[0] > fin.loc['Total Revenue'].iloc[1] else "לא נמצאה ❌"
-        
-        # הצגת המלצה
-        if sent > 0.05 and "חיובית" in growth:
-            st.success("המלצה: BUY 🟢 (חדשות ודוחות טובים)")
+        growth = False
+        if not fin.empty and 'Total Revenue' in fin.index:
+            growth = fin.loc['Total Revenue'].iloc[0] > fin.loc['Total Revenue'].iloc[1]
+
+        if sent > 0.05 and growth:
+            st.success("המלצה סופית: BUY 🟢")
         elif sent < -0.05:
-            st.error("המלצה: AVOID 🔴 (חדשות שליליות)")
+            st.error("המלצה סופית: AVOID 🔴")
         else:
-            st.warning("המלצה: HOLD 🟡 (נתונים מעורבים)")
+            st.warning("המלצה סופית: HOLD 🟡")
 
-        # גרף דקות
-        st.line_chart(data['Close'])
-    else:
-        st.error("לא נמצאו נתונים. וודא שהסימול נכון.")
-
-st.caption(f"עודכן לאחרונה: {pd.Timestamp.now().strftime('%H:%M:%S')}")
+    except Exception as e:
+        st.error(f"שגיאה במשיכת נתונים: {e}")
