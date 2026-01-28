@@ -3,3 +3,4 @@ yfinance
 plotly
 pandas
 textblob
+streamlit-autorefresh
