@@ -2,85 +2,89 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 from textblob import TextBlob
+import requests
+import time
 
-st.set_page_config(page_title="Stock Buy Advisor", layout="wide")
+# הגדרות עמוד וריענון אוטומטי כל 30 שניות
+st.set_page_config(page_title="Real-Time AI Trader", layout="wide")
 
-st.title("🤖 יועץ בינה מלאכותית לקניית מניות")
-st.write("המערכת מנתחת דוחות כספיים וחדשות בזמן אמת כדי לתת המלצה.")
+# פונקציה לשליחת הודעה לטלגרם
+def send_telegram_msg(message):
+    token = "כאן_שים_את_הטוקן_שלך" # הכנס את ה-API Token מ-BotFather
+    chat_id = "כאן_שים_את_ה-ID_שלך" # הכנס את ה-Chat ID שלך
+    url = f"https://api.telegram.org/bot{token}/sendMessage?chat_id={chat_id}&text={message}"
+    try:
+        requests.get(url)
+    except:
+        pass
 
-def get_recommendation(ticker):
+st.title("🚀 מסחר חכם בזמן אמת (ריענון כל 30 שניות)")
+
+# ריענון אוטומטי בעזרת רכיב Streamlit
+from streamlit_autorefresh import st_autorefresh
+st_autorefresh(interval=30 * 1000, key="datarefresh")
+
+# סרגל צד
+ticker = st.sidebar.text_input("הכנס סימול (למשל NVDA):", value="NVDA").upper().strip()
+alert_up = st.sidebar.number_input("התראת עלייה (מחיר יעד):", value=0.0)
+alert_down = st.sidebar.number_input("התראת ירידה (מחיר הגנה):", value=0.0)
+
+def get_live_data(ticker):
     try:
         stock = yf.Ticker(ticker)
+        # מחיר בזמן אמת
+        data = stock.history(period="1d", interval="1m")
+        current_price = data['Close'].iloc[-1]
+        prev_close = stock.info.get('previousClose', current_price)
+        change_pct = ((current_price - prev_close) / prev_close) * 100
         
-        # 1. ניתוח חדשות (סנטימנט)
+        # דוחות וחדשות
         news = stock.news
-        sent_score = 0
-        if news:
-            scores = [TextBlob(n.get('title', '')).sentiment.polarity for n in news[:5]]
-            sent_score = sum(scores) / len(scores)
-        
-        # 2. ניתוח דוחות (צמיחה)
         fin = stock.financials
-        growth_status = "Unknown"
-        if not fin.empty and 'Total Revenue' in fin.index:
-            revs = fin.loc['Total Revenue']
-            if len(revs) > 1:
-                growth = (revs.iloc[0] / revs.iloc[1]) - 1
-                growth_status = "Positive" if growth > 0 else "Negative"
-
-        # 3. ניתוח טכני (מגמה)
-        hist = stock.history(period="50d")
-        current_price = hist['Close'].iloc[-1]
-        avg_price = hist['Close'].mean()
-        trend = "Up" if current_price > avg_price else "Down"
-
-        return {
-            "price": current_price,
-            "sent_score": sent_score,
-            "growth": growth_status,
-            "trend": trend
-        }
+        
+        return current_price, change_pct, news, fin, data
     except:
-        return None
-
-# --- ממשק המלצה ---
-ticker = st.text_input("הכנס סימול מניה (למשל: NVDA, MSFT, GOOGL):", value="NVDA").upper().strip()
+        return None, None, None, None, None
 
 if ticker:
-    with st.spinner('מנתח נתונים וחדשות...'):
-        rec = get_recommendation(ticker)
+    price, change, news, fin, hist_data = get_live_data(ticker)
     
-    if rec:
-        st.subheader(f"📋 סיכום המלצה עבור {ticker}")
+    if price:
+        # תצוגת מחיר גדולה
+        color = "normal" if change == 0 else "inverse" if change < 0 else "normal"
+        st.metric(f"מחיר נוכחי {ticker}", f"${price:.2f}", f"{change:.2f}%")
+
+        # בדיקת התראות ושליחה לטלגרם
+        if alert_up > 0 and price >= alert_up:
+            send_telegram_msg(f"🚀 התראת מכירה! {ticker} הגיעה למחיר יעד: ${price:.2f}")
+            st.toast("התראה נשלחה לטלגרם!")
         
-        # יצירת לוגיקה פשוטה להמלצה
-        score = 0
-        if rec['sent_score'] > 0.05: score += 1
-        if rec['growth'] == "Positive": score += 1
-        if rec['trend'] == "Up": score += 1
+        if alert_down > 0 and price <= alert_down:
+            send_telegram_msg(f"⚠️ התראת הגנה! {ticker} ירדה למחיר: ${price:.2f}")
+            st.toast("התראה נשלחה לטלגרם!")
 
-        # הצגת התוצאה הסופית בצורה בולטת
-        if score == 3:
-            st.success(f"🔥 המלצה חזקה: קנייה (BUY) - כל המדדים (חדשות, דוחות, מחיר) חיוביים!")
-        elif score == 2:
-            st.warning(f"⚖️ המלצה: החזק (HOLD) - רוב המדדים חיוביים, אך יש סיכון מסוים.")
-        else:
-            st.error(f"⚠️ המלצה: הימנע (AVOID) - המדדים מראים חולשה בחדשות או בדוחות.")
-
-        # פירוט הסיבות
-        st.write("---")
-        col1, col2, col3 = st.columns(3)
+        # --- לוגיקת המלצה (דוחות + חדשות) ---
+        st.divider()
+        col1, col2 = st.columns(2)
         
         with col1:
-            icon = "✅" if rec['sent_score'] > 0.05 else "❌"
-            st.write(f"{icon} **חדשות:** " + ("חיוביות" if rec['sent_score'] > 0.05 else "שליליות/נייטרליות"))
-        
+            st.subheader("📰 ניתוח חדשות (AI)")
+            if news:
+                sent_scores = [TextBlob(n.get('title', '')).sentiment.polarity for n in news[:5]]
+                avg_sent = sum(sent_scores) / len(sent_scores)
+                st.write(f"סנטימנט נוכחי: {'חיובי 🔥' if avg_sent > 0.05 else 'שלילי 📉' if avg_sent < -0.05 else 'נייטרלי 😐'}")
+            
         with col2:
-            icon = "✅" if rec['growth'] == "Positive" else "❌"
-            st.write(f"{icon} **דוחות כספיים:** " + ("צמיחה בהכנסות" if rec['growth'] == "Positive" else "אין צמיחה"))
+            st.subheader("📊 ניתוח דוחות")
+            if not fin.empty and 'Total Revenue' in fin.index:
+                revs = fin.loc['Total Revenue']
+                growth = (revs.iloc[0] / revs.iloc[1]) - 1
+                st.write(f"צמיחה שנתית: {growth*100:.1f}% " + ("✅" if growth > 0 else "❌"))
 
-        with col3:
-            icon = "✅" if rec['trend'] == "Up" else "❌"
-            st.write(f"{icon} **מגמת מחיר:** " + ("במגמת עלייה" if rec['trend'] == "Up" else "במגמת ירידה"))
+        # גרף דקות אחרונות
+        st.line_chart(hist_data['Close'])
+        
     else:
-        st.error("לא ניתן לנתח את המניה. וודא שהסימול נכון.")
+        st.error("לא ניתן למשוך נתונים. וודא שהסימול נכון.")
+
+st.caption(f"עודכן לאחרונה: {time.strftime('%H:%M:%S')}")
