@@ -1,100 +1,86 @@
 import streamlit as st
 import yfinance as yf
-import plotly.graph_objects as go
 import pandas as pd
 from textblob import TextBlob
 
-st.set_page_config(page_title="AI Stock Scanner & Financials", layout="wide")
+st.set_page_config(page_title="Stock Buy Advisor", layout="wide")
 
-st.title("🚀 סורק מניות ומערכת ניתוח דוחות")
+st.title("🤖 יועץ בינה מלאכותית לקניית מניות")
+st.write("המערכת מנתחת דוחות כספיים וחדשות בזמן אמת כדי לתת המלצה.")
 
-@st.cache_data(ttl=3600) # דוחות משתנים פחות, נשמור לשעה
-def get_financials(ticker):
+def get_recommendation(ticker):
     try:
         stock = yf.Ticker(ticker)
-        # משיכת דוח רווח והפסד שנתי
-        df_finance = stock.financials
-        # משיכת תאריכי דוחות קרובים
-        calendar = stock.calendar
-        return df_finance, calendar
-    except:
-        return pd.DataFrame(), None
+        
+        # 1. ניתוח חדשות (סנטימנט)
+        news = stock.news
+        sent_score = 0
+        if news:
+            scores = [TextBlob(n.get('title', '')).sentiment.polarity for n in news[:5]]
+            sent_score = sum(scores) / len(scores)
+        
+        # 2. ניתוח דוחות (צמיחה)
+        fin = stock.financials
+        growth_status = "Unknown"
+        if not fin.empty and 'Total Revenue' in fin.index:
+            revs = fin.loc['Total Revenue']
+            if len(revs) > 1:
+                growth = (revs.iloc[0] / revs.iloc[1]) - 1
+                growth_status = "Positive" if growth > 0 else "Negative"
 
-@st.cache_data(ttl=600)
-def get_data(ticker, period):
-    try:
-        df = yf.download(ticker, period=period, interval="1d", auto_adjust=True)
-        if df.empty: return pd.DataFrame()
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
-        df['SMA_20'] = df['Close'].rolling(window=20).mean()
-        return df
-    except:
-        return pd.DataFrame()
+        # 3. ניתוח טכני (מגמה)
+        hist = stock.history(period="50d")
+        current_price = hist['Close'].iloc[-1]
+        avg_price = hist['Close'].mean()
+        trend = "Up" if current_price > avg_price else "Down"
 
-def get_sentiment_score(ticker):
-    try:
-        s = yf.Ticker(ticker)
-        news = s.news
-        if not news: return 0
-        titles = [n.get('title', '') for n in news[:5]]
-        scores = [TextBlob(t).sentiment.polarity for t in titles if t]
-        return sum(scores) / len(scores) if scores else 0
+        return {
+            "price": current_price,
+            "sent_score": sent_score,
+            "growth": growth_status,
+            "trend": trend
+        }
     except:
-        return 0
+        return None
 
-# --- תפריט צד ---
-st.sidebar.header("🔍 הגדרות")
-ticker = st.sidebar.text_input("הכנס סימול (למשל TSLA, NVDA):", value="NVDA").upper().strip()
-period = st.sidebar.selectbox("טווח זמן לגרף:", ["6mo", "1y", "2y"])
+# --- ממשק המלצה ---
+ticker = st.text_input("הכנס סימול מניה (למשל: NVDA, MSFT, GOOGL):", value="NVDA").upper().strip()
 
 if ticker:
-    data = get_data(ticker, period)
+    with st.spinner('מנתח נתונים וחדשות...'):
+        rec = get_recommendation(ticker)
     
-    if not data.empty:
-        curr_price = float(data['Close'].iloc[-1])
-        sent_val = get_sentiment_score(ticker)
-        sma_val = data['SMA_20'].iloc[-1]
+    if rec:
+        st.subheader(f"📋 סיכום המלצה עבור {ticker}")
         
-        # מדדים עליונים
-        c1, c2, c3 = st.columns(3)
-        c1.metric("מחיר סגירה", f"${curr_price:.2f}")
-        s_text = "חיובי 🔥" if sent_val > 0.05 else "שלילי 📉" if sent_val < -0.05 else "נייטרלי 😐"
-        c2.metric("סנטימנט", s_text)
-        
-        if curr_price > sma_val and sent_val > 0:
-            c3.success("המלצה: BUY 🟢")
-        elif curr_price < sma_val and sent_val < 0:
-            c3.error("המלצה: SELL 🔴")
+        # יצירת לוגיקה פשוטה להמלצה
+        score = 0
+        if rec['sent_score'] > 0.05: score += 1
+        if rec['growth'] == "Positive": score += 1
+        if rec['trend'] == "Up": score += 1
+
+        # הצגת התוצאה הסופית בצורה בולטת
+        if score == 3:
+            st.success(f"🔥 המלצה חזקה: קנייה (BUY) - כל המדדים (חדשות, דוחות, מחיר) חיוביים!")
+        elif score == 2:
+            st.warning(f"⚖️ המלצה: החזק (HOLD) - רוב המדדים חיוביים, אך יש סיכון מסוים.")
         else:
-            c3.warning("המלצה: HOLD 🟡")
+            st.error(f"⚠️ המלצה: הימנע (AVOID) - המדדים מראים חולשה בחדשות או בדוחות.")
 
-        # גרף
-        fig = go.Figure(data=[go.Candlestick(x=data.index, open=data['Open'], high=data['High'], low=data['Low'], close=data['Close'], name="Price")])
-        fig.update_layout(template="plotly_dark", height=400, margin=dict(t=0, b=0))
-        st.plotly_chart(fig, use_container_width=True)
+        # פירוט הסיבות
+        st.write("---")
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            icon = "✅" if rec['sent_score'] > 0.05 else "❌"
+            st.write(f"{icon} **חדשות:** " + ("חיוביות" if rec['sent_score'] > 0.05 else "שליליות/נייטרליות"))
+        
+        with col2:
+            icon = "✅" if rec['growth'] == "Positive" else "❌"
+            st.write(f"{icon} **דוחות כספיים:** " + ("צמיחה בהכנסות" if rec['growth'] == "Positive" else "אין צמיחה"))
 
-        # --- מגזר דוחות כספיים ---
-        st.divider()
-        st.subheader(f"📊 דוחות כספיים וביצועים - {ticker}")
-        
-        tab1, tab2 = st.tabs(["📑 דוח רווח והפסד (Financials)", "📅 לוח שנה של דוחות (Earnings)"])
-        
-        fin_df, cal_info = get_financials(ticker)
-        
-        with tab1:
-            if not fin_df.empty:
-                # מציג את 4 השנים האחרונות בצורה קריאה
-                st.dataframe(fin_df.style.format("{:,.0f}"), use_container_width=True)
-            else:
-                st.info("לא נמצאו נתונים פיננסיים זמינים כרגע.")
-                
-        with tab2:
-            if cal_info is not None:
-                # הצגת תאריכי דוחות קרובים ותחזיות (אם יש)
-                st.write("**תאריכי דוחות קרובים ותחזית EPS:**")
-                st.json(cal_info)
-            else:
-                st.info("לא נמצא מידע על דוחות קרובים.")
+        with col3:
+            icon = "✅" if rec['trend'] == "Up" else "❌"
+            st.write(f"{icon} **מגמת מחיר:** " + ("במגמת עלייה" if rec['trend'] == "Up" else "במגמת ירידה"))
     else:
-        st.error(f"לא הצלחנו למשוך נתונים עבור {ticker}.")
+        st.error("לא ניתן לנתח את המניה. וודא שהסימול נכון.")
