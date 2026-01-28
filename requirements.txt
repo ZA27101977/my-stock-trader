@@ -2,8 +2,4 @@ streamlit
 yfinance
 plotly
 pandas
-streamlit
-yfinance
-plotly
-pandas
 textblob
