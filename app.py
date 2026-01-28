@@ -10,8 +10,8 @@ st.set_page_config(page_title="Real-Time AI Trader", layout="wide")
 
 # פונקציה לשליחת הודעה לטלגרם
 def send_telegram_msg(message):
-    token = "כאן_שים_את_הטוקן_שלך" # הכנס את ה-API Token מ-BotFather
-    chat_id = "כאן_שים_את_ה-ID_שלך" # הכנס את ה-Chat ID שלך
+    token = "8553256276:AAG2AWkV_cssOAnlWe8MUChR-MQ8VgFJ1ZY-API Token מ-BotFather
+    chat_id = "8553256276:AAG2AWkV_cssOAnlWe8MUChR-MQ8VgFJ1ZY-Chat ID שלך
     url = f"https://api.telegram.org/bot{token}/sendMessage?chat_id={chat_id}&text={message}"
     try:
         requests.get(url)
