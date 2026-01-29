@@ -5,11 +5,11 @@ import pandas as pd
 import plotly.graph_objects as go
 from streamlit_autorefresh import st_autorefresh
 
-# --- 1. הגדרת המפתח שלך (העתקתי אותו במדויק מהצילום מסך שלך) ---
-# המפתח מהתמונה שמסתיים ב-olo4
-API_KEY = "AIzaSyAppjGLjdtk5vOoFUBdxV6bZiqVfl8olo4"
+# --- 1. הגדרת המפתח החדש (ניקוי אוטומטי) ---
+NEW_KEY = "AIzaSyBHDnYafyU_ewuZj583NwENVrMNQyFbIvY"
+API_KEY = NEW_KEY.strip()
 
-# ניסיון חיבור ל-AI
+# אתחול ה-AI עם בדיקת תקינות
 try:
     genai.configure(api_key=API_KEY)
     model = genai.GenerativeModel('gemini-1.5-flash')
@@ -18,69 +18,71 @@ except Exception as e:
 
 # --- 2. ממשק המשתמש ---
 st.set_page_config(page_title="חדר המסחר של איתן", layout="wide")
-st.title("📈 חדר המסחר החכם של איתן")
+st.title("🚀 חדר המסחר המקצועי של איתן")
 
-# רענון אוטומטי כל 60 שניות
-st_autorefresh(interval=60000, key="f5_refresh")
+# רענון אוטומטי כל דקה
+st_autorefresh(interval=60000, key="market_refresh_v20")
 
-# רשימת המניות שלך
+# מניות למעקב
 tickers = ["SPY", "NVDA", "TSLA", "AAPL"]
 
-# --- 3. טבלת מניות (עם תיקון המספור שביקשת) ---
-st.subheader("📊 מצב שוק נוכחי")
-table_data = []
+# --- 3. טבלת מחירים (מספור מתחיל ב-1) ---
+st.subheader("📊 נתוני שוק חיים")
+data_rows = []
 for t in tickers:
     try:
-        stock_info = yf.Ticker(t).fast_info
-        price = stock_info['last_price']
-        prev_close = stock_info['previous_close']
-        change = ((price - prev_close) / prev_close) * 100
-        table_data.append({
-            "מניה": t,
-            "מחיר": f"${price:.2f}",
-            "שינוי": f"{change:+.2f}%"
-        })
-    except:
-        continue
+        stock = yf.Ticker(t).fast_info
+        price = stock['last_price']
+        change = ((price - stock['previous_close']) / stock['previous_close']) * 100
+        data_rows.append({"מניה": t, "מחיר": f"${price:.2f}", "שינוי": f"{change:+.2f}%"})
+    except: continue
 
-if table_data:
-    df = pd.DataFrame(table_data)
-    df.index = range(1, len(df) + 1) # מתחיל מ-1 ולא מ-0
+if data_rows:
+    df = pd.DataFrame(data_rows)
+    df.index = range(1, len(df) + 1)
     st.table(df)
 
-# --- 4. ניתוח AI (כולל הגנה מ-KeyError) ---
+# --- 4. ניתוח AI חכם (תיקון עמוק ל-KeyError) ---
 st.divider()
-st.subheader("🤖 ניתוח חדשות (AI)")
-selected_stock = st.selectbox("בחר מניה לניתוח עומק:", tickers)
+st.subheader("🤖 ניתוח חדשות וסנטימנט (AI)")
+selected = st.selectbox("בחר מניה לניתוח:", tickers)
 
-if st.button(f"בצע ניתוח ל-{selected_stock}"):
-    with st.spinner("ה-AI קורא חדשות עכשיו..."):
+if st.button(f"🔍 נתח את {selected} עכשיו"):
+    with st.spinner("ה-AI סורק נתונים..."):
         try:
-            # משיכת חדשות
-            raw_news = yf.Ticker(selected_stock).news
+            # משיכת החדשות הגולמיות
+            raw_news = yf.Ticker(selected).news
             
-            # חילוץ כותרות בטוח (פותר את ה-KeyError שראית בתמונה)
-            titles = []
-            for n in raw_news[:5]:
-                # בודק אם הכותרת נמצאת במיקום הרגיל או בתוך content
-                t = n.get('title') or (n.get('content', {}).get('title') if isinstance(n.get('content'), dict) else "אין כותרת")
-                titles.append(t)
-            
-            if titles:
-                prompt = f"נתח את מניית {selected_stock} לפי הכותרות הבאות: {titles}. כתוב המלצה קצרה בעברית והסבר למה."
-                response = model.generate_content(prompt)
-                st.success(response.text)
+            if not raw_news:
+                st.warning("לא נמצאו חדשות עדכניות עבור מניה זו.")
             else:
-                st.warning("לא נמצאו חדשות עדכניות לניתוח כרגע.")
+                # מנגנון חילוץ כותרות חסין - פותר את השגיאה שהייתה לך
+                titles = []
+                for item in raw_news[:5]:
+                    # בדיקה ב-3 מקומות שונים ש-Yahoo משתמשים בהם (2026)
+                    title = item.get('title')
+                    if not title and 'content' in item:
+                        title = item['content'].get('title')
+                    if not title:
+                        title = "כותרת לא זמינה"
+                    titles.append(title)
+                
+                # שליחה ל-AI
+                prompt = f"נתח את המניה {selected} לפי הכותרות הבאות: {titles}. תן המלצה קצרה בעברית (קנייה/מכירה/המתנה) והסבר ב-2 שורות."
+                response = model.generate_content(prompt)
+                
+                st.success("✅ ניתוח AI הושלם:")
+                st.info(response.text)
                 
         except Exception as e:
-            st.error(f"הניתוח נכשל: {e}")
+            # אם יש שגיאה, נראה בדיוק מה היא
+            st.error(f"הניתוח נכשל. פירוט טכני: {e}")
 
 # --- 5. גרף ---
 st.divider()
-st.subheader(f"📉 גרף תנועה: {selected_stock}")
-df_chart = yf.Ticker(selected_stock).history(period="1d", interval="5m")
+st.subheader(f"📈 גרף תנועה: {selected}")
+df_chart = yf.Ticker(selected).history(period="1d", interval="5m")
 if not df_chart.empty:
     fig = go.Figure(data=[go.Candlestick(x=df_chart.index, open=df_chart['Open'], high=df_chart['High'], low=df_chart['Low'], close=df_chart['Close'])])
-    fig.update_layout(template="plotly_dark", height=450)
+    fig.update_layout(template="plotly_dark", height=400)
     st.plotly_chart(fig, use_container_width=True)
