@@ -4,3 +4,4 @@ requests
 streamlit-autorefresh
 pandas
 plotly
+google-generativeai
