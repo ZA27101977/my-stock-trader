@@ -6,44 +6,41 @@ import google.generativeai as genai
 import requests
 from streamlit_autorefresh import st_autorefresh
 
-# --- 1. המפתחות האישיים שלך (מעודכן ומוכן!) ---
-GEMINI_API_KEY = "AIzaSyD" + "B0p-o0pY" + "WnS970V" + "FvYFzU" + "N0n8eU_olo4" # המפתח שלך מהתמונה
+# --- 1. המפתחות האישיים שלך (מוטמעים!) ---
+# המפתח מהתמונה שלך שנוצר ב-29 בינואר
+GEMINI_API_KEY = "AIzaSyD" + "B0p-o0pY" + "WnS970V" + "FvYFzU" + "N0n8eU_olo4" 
 TELEGRAM_TOKEN = "8583393995:AAGdpAx-wh2l6pB2Pq4FL5lOhQev1GFacAk"
 CHAT_ID = "1054735794"
 PASSWORD = "1234"
 
 # הגדרת ה-AI
-try:
-    genai.configure(api_key=GEMINI_API_KEY)
-    ai_model = genai.GenerativeModel('gemini-1.5-flash')
-except:
-    st.error("שגיאה בתצורת ה-AI")
+genai.configure(api_key=GEMINI_API_KEY)
+ai_model = genai.GenerativeModel('gemini-1.5-flash')
 
 # --- 2. פונקציות עזר ---
 def send_telegram(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
         requests.post(url, json={"chat_id": CHAT_ID, "text": message, "parse_mode": "HTML"}, timeout=10)
-    except:
-        pass
+    except: pass
 
 def get_ai_analysis(ticker, news):
     if not news:
-        return "אין חדשות עדכניות לניתוח כרגע."
+        return "לא נמצאו חדשות עדכניות לניתוח."
     
-    # חילוץ כותרות בצורה בטוחה (תיקון ל-KeyError)
+    # חילוץ כותרות בצורה בטוחה למניעת KeyError
     titles = []
     for n in news[:5]:
-        t = n.get('title') or (n.get('content', {}).get('title') if isinstance(n.get('content'), dict) else "אין כותרת")
+        t = n.get('title') or (n.get('content', {}).get('title') if isinstance(n.get('content'), dict) else "כותרת לא זמינה")
         titles.append(t)
         
     prompt = (f"נתח את מניית {ticker} לפי הכותרות: {titles}. "
-              f"תן המלצה קצרה בעברית (קנייה/מכירה/המתנה) והסבר בשתי שורות.")
+              f"תן המלצה בעברית (קנייה/מכירה/המתנה) והסבר קצר.")
     try:
         response = ai_model.generate_content(prompt)
         return response.text
     except Exception as e:
-        return f"ה-AI לא הצליח לנתח: {str(e)}"
+        return f"שגיאה בניתוח: {str(e)}"
 
 # --- 3. אבטחה וכניסה ---
 if "authenticated" not in st.session_state:
@@ -51,18 +48,15 @@ if "authenticated" not in st.session_state:
 
 if not st.session_state.authenticated:
     st.title("🔐 כניסה לחדר המסחר")
-    user_pwd = st.text_input("הכנס סיסמה:", type="password")
-    if st.button("כניסה"):
-        if user_pwd == PASSWORD:
+    if st.text_input("סיסמה:", type="password") == PASSWORD:
+        if st.button("כניסה"):
             st.session_state.authenticated = True
             st.rerun()
-        else:
-            st.error("סיסמה שגויה")
     st.stop()
 
 # --- 4. ממשק ראשי ---
-st.title("🚀 חדר המסחר של איתן (AI)")
-st_autorefresh(interval=60000, key="ai_final_v10")
+st.title("📈 חדר המסחר AI של איתן")
+st_autorefresh(interval=60000, key="ai_trader_v11")
 
 with st.sidebar:
     st.header("⚙️ הגדרות")
@@ -72,13 +66,12 @@ with st.sidebar:
         st.session_state.authenticated = False
         st.rerun()
 
-# טבלת נתונים חיה
+# טבלת מניות (מספור מתחיל ב-1)
 data_list = []
 for t in ticker_list:
     try:
         s = yf.Ticker(t).fast_info
-        p = s['last_price']
-        c = ((p - s['previous_close']) / s['previous_close']) * 100
+        p, c = s['last_price'], ((s['last_price'] - s['previous_close']) / s['previous_close']) * 100
         data_list.append({"מניה": t, "מחיר": f"${p:.2f}", "שינוי": f"{c:+.2f}%"})
     except: continue
 
@@ -87,22 +80,22 @@ if data_list:
     df.index = range(1, len(df) + 1)
     st.table(df)
 
-# --- 5. אזור הניתוח ---
+# --- 5. אזור ניתוח ה-AI ---
 st.divider()
-st.subheader("🤖 ניתוח חדשות (AI)")
+st.subheader("🤖 ניתוח חדשות ודוחות (AI)")
 selected = st.selectbox("בחר מניה לניתוח:", ticker_list)
 
 if st.button(f"🔍 בצע ניתוח עמוק ל-{selected}"):
-    with st.spinner("ה-AI מנתח..."):
+    with st.spinner("ה-AI קורא חדשות עכשיו..."):
         stock = yf.Ticker(selected)
         res = get_ai_analysis(selected, stock.news)
         st.success(res)
         send_telegram(f"🤖 <b>המלצת AI ל-{selected}:</b>\n{res}")
 
-# --- 6. גרף ---
+# --- 6. גרף מקצועי ---
 df_chart = yf.Ticker(selected).history(period="2d", interval="5m", prepost=True)
 if not df_chart.empty:
-    fig = go.Figure(go.Scatter(x=df_chart.index, y=df_chart['Close'], line=dict(color='#00ffcc')))
+    fig = go.Figure(go.Scatter(x=df_chart.index, y=df_chart['Close'], line=dict(color='#00ffcc', width=3)))
     fig.update_layout(template="plotly_dark", height=400, title=f"גרף {selected}")
     fig.update_yaxes(autorange=True, fixedrange=False)
     st.plotly_chart(fig, use_container_width=True)
