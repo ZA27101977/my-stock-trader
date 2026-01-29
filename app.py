@@ -8,9 +8,9 @@ import datetime
 
 # 1. הגדרות דף וריענון אוטומטי (30 שניות)
 st.set_page_config(page_title="AI Live Trader Israel", layout="wide")
-st_autorefresh(interval=30 * 1000, key="final_clean_version")
+st_autorefresh(interval=30 * 1000, key="final_telegram_fix_v5")
 
-# 2. פונקציית טלגרם - שימוש ב-JSON לשיפור האמינות
+# 2. פונקציית טלגרם יציבה
 def send_telegram(message):
     token = "8553256276:AAG2AWkV_cssOAnlWe8MUChR-MQ8VgFJ1ZY"
     chat_id = 1054735794 
@@ -25,19 +25,22 @@ def send_telegram(message):
     try:
         response = requests.post(url, json=payload, timeout=5)
         if response.status_code == 200:
-            st.sidebar.success(f"✅ נשלח ב-{datetime.datetime.now().strftime('%H:%M:%S')}")
+            st.sidebar.success(f"✅ הודעה נשלחה ב-{datetime.datetime.now().strftime('%H:%M:%S')}")
+            return True
         else:
-            error_info = response.json().get('description', 'Unknown')
-            st.sidebar.error(f"❌ שגיאת טלגרם: {error_info}")
+            error_desc = response.json().get('description', 'Unknown Error')
+            st.sidebar.error(f"❌ שגיאת טלגרם: {error_desc}")
+            return False
     except Exception as e:
-        st.sidebar.error(f"⚠️ תקלה: {e}")
+        st.sidebar.error(f"⚠️ שגיאת חיבור: {e}")
+        return False
 
-# 3. ניהול זמן ישראל (UTC+2)
+# 3. שעון ישראל (UTC+2)
 israel_now = datetime.datetime.utcnow() + datetime.timedelta(hours=2)
 current_time = israel_now.strftime('%H:%M:%S')
 
-st.title("🚀 מסחר חכם בזמן אמת")
-st.write(f"🕒 שעה בישראל: **{current_time}** (ריענון כל 30 שניות)")
+st.title("🚀 מערכת מסחר AI - בדיקת טלגרם סופית")
+st.write(f"🕒 זמן עדכון אחרון (ישראל): **{current_time}**")
 
 # 4. סרגל צד (Sidebar)
 with st.sidebar:
@@ -46,34 +49,27 @@ with st.sidebar:
     st.divider()
     st.subheader("🔔 הגדר התראה לנייד")
     target_up = st.number_input("שלח הודעה כשהמחיר עולה מעל ($):", value=0.0, step=0.01)
-    target_down = st.number_input("שלח הודעה כשהמחיר יורד מתחת ($):", value=0.0, step=0.01)
     
+    st.write("---")
     if st.button("שלח הודעת בדיקה עכשיו"):
-        send_telegram("👋 בדיקה מהאפליקציה! המערכת מחוברת ומוכנה.")
+        send_telegram("👋 הבדיקה הצליחה! המערכת מחוברת לטלפון שלך.")
 
-# 5. משיכת נתונים וניתוח (תיקון השגיאות מהתמונות)
+# 5. משיכת נתונים וניתוח
 if ticker:
     try:
         stock = yf.Ticker(ticker)
-        
-        # משיכת מחיר "חי" מרשת Yahoo (ללא Cache)
         live_info = stock.fast_info
         price = live_info['last_price']
         prev_close = live_info['previous_close']
         change_pct = ((price / prev_close) - 1) * 100
 
-        # הצגת המחיר
-        c_p, c_c = st.columns(2)
-        c_p.metric(f"מחיר {ticker}", f"${price:.2f}")
-        c_c.metric("שינוי יומי", f"{change_pct:.2f}%")
+        col_p, col_c = st.columns(2)
+        col_p.metric(f"מחיר {ticker}", f"${price:.2f}")
+        col_change = col_c.metric("שינוי יומי", f"{change_pct:.2f}%")
 
-        # בדיקת תנאי התראה ושליחה
+        # בדיקת התראה ושליחה
         if target_up > 0 and price >= target_up:
             send_telegram(f"<b>🚀 יעד הושג!</b>\n{ticker} במחיר: ${price:.2f}")
-            st.toast("התראה נשלחה!")
-        
-        if target_down > 0 and price <= target_down:
-            send_telegram(f"<b>📉 יעד ירידה!</b>\n{ticker} במחיר: ${price:.2f}")
             st.toast("התראה נשלחה!")
 
         # גרף דקות
@@ -83,28 +79,7 @@ if ticker:
                 hist.columns = hist.columns.get_level_values(0)
             st.line_chart(hist['Close'], height=250)
 
-        # 6. ניתוח AI
-        st.divider()
-        st.subheader("🤖 ניתוח חכם")
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            news = stock.news
-            sent = sum([TextBlob(n.get('title', '')).sentiment.polarity for n in news[:5]]) / 5 if news else 0
-            st.write("**סנטימנט חדשות:** " + ("חיובי 🔥" if sent > 0.05 else "שלילי 📉" if sent < -0.05 else "נייטרלי 😐"))
-            
-        with col2:
-            fin = stock.financials
-            # תיקון לוגיקת צמיחה
-            if not fin.empty and 'Total Revenue' in fin.index and len(fin.loc['Total Revenue']) > 1:
-                growth = fin.loc['Total Revenue'].iloc[0] > fin.loc['Total Revenue'].iloc[1]
-                st.write("**צמיחה בהכנסות:** " + ("כן ✅" if growth else "לא ❌"))
-            else:
-                st.write("**צמיחה בהכנסות:** אין נתונים")
-
     except Exception as e:
-        st.error(f"לא ניתן למשוך נתונים עבור {ticker}. וודא שהסימול נכון.")
-else:
-    st.info("הכנס סימול מניה כדי להתחיל.")
+        st.error(f"שגיאה במשיכת נתונים עבור {ticker}")
 
-st.caption(f"Last Sync: {current_time} | Market Status: Live (Mon-Fri)")
+st.caption(f"Status: Live | Last Sync: {current_time}")
