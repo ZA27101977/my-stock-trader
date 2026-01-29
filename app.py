@@ -6,9 +6,8 @@ import google.generativeai as genai
 import requests
 from streamlit_autorefresh import st_autorefresh
 
-# --- 1. המפתחות האישיים שלך (מוטמעים!) ---
-# המפתח מהתמונה שלך שנוצר ב-29 בינואר
-GEMINI_API_KEY = "AIzaSyD" + "B0p-o0pY" + "WnS970V" + "FvYFzU" + "N0n8eU_olo4" 
+# --- 1. המפתחות האישיים שלך (מוטמעים במלואם) ---
+GEMINI_API_KEY = "AIzaSyDB0p-o0pYWnS970VFvYFzUN0n8eU_olo4" 
 TELEGRAM_TOKEN = "8583393995:AAGdpAx-wh2l6pB2Pq4FL5lOhQev1GFacAk"
 CHAT_ID = "1054735794"
 PASSWORD = "1234"
@@ -25,44 +24,46 @@ def send_telegram(message):
     except: pass
 
 def get_ai_analysis(ticker, news):
-    if not news:
-        return "לא נמצאו חדשות עדכניות לניתוח."
+    if not news or len(news) == 0:
+        return "לא נמצאו חדשות עדכניות לניתוח עבור מניה זו."
     
-    # חילוץ כותרות בצורה בטוחה למניעת KeyError
+    # חילוץ כותרות בצורה בטוחה מאוד למניעת KeyError
     titles = []
     for n in news[:5]:
+        # בדיקה אם הכותרת נמצאת ברמה הראשונה או בתוך אובייקט תוכן
         t = n.get('title') or (n.get('content', {}).get('title') if isinstance(n.get('content'), dict) else "כותרת לא זמינה")
         titles.append(t)
         
-    prompt = (f"נתח את מניית {ticker} לפי הכותרות: {titles}. "
-              f"תן המלצה בעברית (קנייה/מכירה/המתנה) והסבר קצר.")
+    prompt = (f"אתה אנליסט מניות. נתח את מניית {ticker} לפי הכותרות הבאות: {titles}. "
+              f"תן המלצה בעברית (קנייה/מכירה/המתנה) והסבר קצר ב-2 שורות.")
     try:
         response = ai_model.generate_content(prompt)
         return response.text
     except Exception as e:
-        return f"שגיאה בניתוח: {str(e)}"
+        return f"שגיאה בתקשורת עם ה-AI: {str(e)}"
 
 # --- 3. אבטחה וכניסה ---
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
 if not st.session_state.authenticated:
-    st.title("🔐 כניסה לחדר המסחר")
-    if st.text_input("סיסמה:", type="password") == PASSWORD:
-        if st.button("כניסה"):
+    st.title("🔐 כניסה למערכת")
+    user_input = st.text_input("סיסמה:", type="password")
+    if st.button("כניסה"):
+        if user_input == PASSWORD:
             st.session_state.authenticated = True
             st.rerun()
     st.stop()
 
 # --- 4. ממשק ראשי ---
-st.title("📈 חדר המסחר AI של איתן")
-st_autorefresh(interval=60000, key="ai_trader_v11")
+st.title("📈 חדר המסחר של איתן")
+st_autorefresh(interval=60000, key="fixed_v12")
 
 with st.sidebar:
     st.header("⚙️ הגדרות")
     tickers_input = st.text_area("רשימת מניות:", value="SPY, NVDA, TSLA, AAPL")
     ticker_list = [t.strip().upper() for t in tickers_input.split(",")]
-    if st.button("יציאה מהמערכת"):
+    if st.button("יציאה"):
         st.session_state.authenticated = False
         st.rerun()
 
@@ -82,20 +83,21 @@ if data_list:
 
 # --- 5. אזור ניתוח ה-AI ---
 st.divider()
-st.subheader("🤖 ניתוח חדשות ודוחות (AI)")
+st.subheader("🤖 ניתוח חדשות (AI)")
 selected = st.selectbox("בחר מניה לניתוח:", ticker_list)
 
 if st.button(f"🔍 בצע ניתוח עמוק ל-{selected}"):
-    with st.spinner("ה-AI קורא חדשות עכשיו..."):
+    with st.spinner("ה-AI מנתח את החדשות האחרונות..."):
         stock = yf.Ticker(selected)
+        # תיקון: שליחת ה-news כפי שהם, הפונקציה כבר תטפל בחילוץ
         res = get_ai_analysis(selected, stock.news)
         st.success(res)
         send_telegram(f"🤖 <b>המלצת AI ל-{selected}:</b>\n{res}")
 
-# --- 6. גרף מקצועי ---
+# --- 6. גרף ---
 df_chart = yf.Ticker(selected).history(period="2d", interval="5m", prepost=True)
 if not df_chart.empty:
-    fig = go.Figure(go.Scatter(x=df_chart.index, y=df_chart['Close'], line=dict(color='#00ffcc', width=3)))
+    fig = go.Figure(go.Scatter(x=df_chart.index, y=df_chart['Close'], line=dict(color='#00ffcc', width=2)))
     fig.update_layout(template="plotly_dark", height=400, title=f"גרף {selected}")
     fig.update_yaxes(autorange=True, fixedrange=False)
     st.plotly_chart(fig, use_container_width=True)
