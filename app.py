@@ -1,16 +1,17 @@
 import streamlit as st
 import yfinance as yf
 import requests
-from streamlit_autorefresh import st_autorefresh
 import pandas as pd
+import plotly.graph_objects as go
+from streamlit_autorefresh import st_autorefresh
 
-# אבטחה
+# 1. אבטחה
 PASSWORD = "1234" 
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
 if not st.session_state.authenticated:
-    st.title("🔐 כניסה")
+    st.title("🔐 כניסה למערכת")
     user_input = st.text_input("סיסמה:", type="password")
     if st.button("כניסה"):
         if user_input == PASSWORD:
@@ -18,6 +19,7 @@ if not st.session_state.authenticated:
             st.rerun()
     st.stop()
 
+# 2. פונקציית טלגרם
 def send_telegram(message):
     token = "8583393995:AAGdpAx-wh2l6pB2Pq4FL5lOhQev1GFacAk"
     chat_id = "1054735794"
@@ -27,25 +29,23 @@ def send_telegram(message):
     except:
         pass
 
-st_autorefresh(interval=60000, key="smart_bot_v2") # ריענון כל דקה (פחות עומס)
+# ריענון כל דקה
+st_autorefresh(interval=60000, key="fancy_charts_v3")
 
-st.title("📊 חדר מסחר - שליטה בהתראות")
+st.title("📈 חדר מסחר מקצועי")
 
+# 3. סרגל צד
 with st.sidebar:
     st.header("⚙️ הגדרות")
-    # הוספת SPY כברירת מחדל עבור ה-S&P 500
-    tickers_input = st.text_area("רשימת מניות (הפרד בפסיק):", value="SPY, NVDA, TSLA, AAPL")
+    tickers_input = st.text_area("רשימת מניות (פסיק מפריד):", value="SPY, NVDA, TSLA, AAPL")
     ticker_list = [t.strip().upper() for t in tickers_input.split(",")]
-    
+    threshold = st.slider("התראת שינוי חריג (%):", 1.0, 10.0, 5.0)
     st.divider()
-    # הגדלנו ל-5% כדי לקבל פחות הודעות
-    threshold = st.slider("שלח התראה רק בשינוי של מעל (%):", 1.0, 10.0, 5.0)
-    
     if st.button("יציאה"):
         st.session_state.authenticated = False
         st.rerun()
 
-# תצוגת נתונים
+# 4. טבלת נתונים חיה
 watchlist_data = []
 for ticker in ticker_list:
     try:
@@ -53,22 +53,59 @@ for ticker in ticker_list:
         price = stock.fast_info['last_price']
         prev_close = stock.fast_info['previous_close']
         change = ((price - prev_close) / prev_close) * 100
+        watchlist_data.append({"מניה": ticker, "מחיר": f"${price:.2f}", "שינוי": f"{change:+.2f}%", "raw_change": change})
         
-        name = "S&P 500 (ETF)" if ticker == "SPY" else ticker
-        watchlist_data.append({"מניה": name, "מחיר": f"${price:.2f}", "שינוי יומי": f"{change:+.2f}%"})
-        
-        # שליחת הודעה רק אם השינוי באמת חריג
+        # סינון הודעות חכם
         if abs(change) >= threshold:
-            # הוספנו מנגנון שמוודא שלא נשלח את אותה הודעה כל דקה
-            if f"alert_{ticker}_{round(change)}" not in st.session_state:
-                send_telegram(f"⚠️ <b>תנועה חריגה!</b>\n{name} זזה ב-{change:+.2f}% ומחירה ${price:.2f}")
-                st.session_state[f"alert_{ticker}_{round(change)}"] = True
+            alert_key = f"sent_{ticker}_{pd.Timestamp.now().hour}"
+            if alert_key not in st.session_state:
+                send_telegram(f"⚠️ <b>תנועה חריגה ב-{ticker}!</b>\nמחיר: ${price:.2f}\nשינוי: {change:+.2f}%")
+                st.session_state[alert_key] = True
     except:
         continue
 
-st.table(pd.DataFrame(watchlist_data))
+if watchlist_data:
+    df = pd.DataFrame(watchlist_data)
+    # עיצוב הטבלה עם צבעים לשינוי
+    def color_change(val):
+        color = 'red' if '-' in val else 'green'
+        return f'color: {color}'
+    st.table(df[["מניה", "מחיר", "שינוי"]].style.applymap(color_change, subset=['שינוי']))
 
-# גרף של ה-S&P 500
-st.subheader("מבט על השוק (S&P 500)")
-spy_chart = yf.Ticker("SPY").history(period="1d", interval="5m")
-st.line_chart(spy_chart['Close'])
+# 5. גרף Plotly מעוצב (עבור המניה הראשונה ברשימה או בחירה)
+st.subheader("📊 ניתוח גרפי מתקדם")
+selected_stock = st.selectbox("בחר מניה לתצוגת גרף:", ticker_list)
+
+if selected_stock:
+    df_chart = yf.Ticker(selected_stock).history(period="1d", interval="5m")
+    if not df_chart.empty:
+        # יצירת הגרף המעוצב
+        fig = go.Figure()
+        
+        # קביעת צבע הקו (ירוק אם המחיר הנוכחי גבוה ממחיר הפתיחה)
+        line_color = 'green' if df_chart['Close'][-1] >= df_chart['Open'][0] else 'red'
+        
+        fig.add_trace(go.Scatter(
+            x=df_chart.index, 
+            y=df_chart['Close'],
+            mode='lines',
+            name='מחיר סגירה',
+            line=dict(color=line_color, width=3),
+            fill='tozeroy', # הוספת צל מתחת לקו
+            fillcolor='rgba(0, 255, 0, 0.1)' if line_color == 'green' else 'rgba(255, 0, 0, 0.1)'
+        ))
+
+        fig.update_layout(
+            title=f"תנועת המחיר של {selected_stock} היום",
+            xaxis_title="זמן",
+            yaxis_title="מחיר ($)",
+            plot_bgcolor="white",
+            hovermode="x unified",
+            margin=dict(l=20, r=20, t=40, b=20),
+            height=400
+        )
+        
+        fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
+        fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
+        
+        st.plotly_chart(fig, use_container_width=True)
