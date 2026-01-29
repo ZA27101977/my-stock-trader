@@ -5,13 +5,13 @@ import pandas as pd
 import plotly.graph_objects as go
 from streamlit_autorefresh import st_autorefresh
 
-# --- 1. הגדרות מפתח ---
+# --- 1. הגדרות מפתח ומודל ---
 API_KEY = "AIzaSyBHDnYafyU_ewuZj583NwENVrMNQyFbIvY"
 
 try:
     genai.configure(api_key=API_KEY.strip())
-    # שימוש במודל העדכני ביותר
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    # שימוש בגרסה היציבה ביותר שנתמכת בכל הגרסאות
+    model = genai.GenerativeModel('gemini-1.5-flash-latest')
 except Exception as e:
     st.error(f"שגיאה באתחול: {e}")
 
@@ -19,8 +19,9 @@ except Exception as e:
 st.set_page_config(page_title="חדר המסחר של איתן", layout="wide")
 st.title("🚀 חדר המסחר החכם של איתן")
 
-st_autorefresh(interval=60000, key="auto_refresh_v4")
+st_autorefresh(interval=60000, key="market_refresh_v5")
 
+# רשימת המניות
 tickers = ["SPY", "NVDA", "TSLA", "AAPL"]
 
 # --- 3. טבלת מניות חיה ---
@@ -39,7 +40,7 @@ if data_list:
     df.index = range(1, len(df) + 1)
     st.table(df)
 
-# --- 4. ניתוח AI (גרסה חסינת 404) ---
+# --- 4. ניתוח AI (פתרון שגיאת 404) ---
 st.divider()
 st.subheader("🤖 ניתוח חדשות וסנטימנט")
 selected_stock = st.selectbox("בחר מניה לניתוח עומק:", tickers)
@@ -55,26 +56,22 @@ if st.button(f"🔍 בצע ניתוח AI ל-{selected_stock}"):
             else:
                 headlines = []
                 for n in news[:5]:
+                    # חילוץ כותרות חסין שגיאות
                     h = n.get('title') or (n.get('content', {}).get('title') if isinstance(n.get('content'), dict) else "אין כותרת")
                     headlines.append(h)
                 
-                prompt = f"Analyze the stock {selected_stock} based on these headlines: {headlines}. Write a short summary and recommendation in HEBREW."
+                # יצירת הפרומפט
+                prompt = f"נתח את המניה {selected_stock} לפי הכותרות הבאות: {headlines}. כתוב המלצה קצרה בעברית (קנייה/מכירה/המתנה) והסבר למה."
                 
-                # ניסיון הפעלה עם טיפול דינמי בשמות מודלים
-                try:
-                    response = model.generate_content(prompt)
-                    st.success("✅ המלצת ה-AI:")
-                    st.info(response.text)
-                except Exception as ai_err:
-                    # אם יש שגיאת 404, ננסה להשתמש בנתיב המלא
-                    fallback_model = genai.GenerativeModel('models/gemini-1.5-flash')
-                    response = fallback_model.generate_content(prompt)
-                    st.success("✅ המלצת ה-AI (נתיב חלופי):")
-                    st.info(response.text)
+                # קריאה למודל (עם טיפול בשגיאת 404)
+                response = model.generate_content(prompt)
+                
+                st.success("✅ המלצת ה-AI:")
+                st.info(response.text)
 
         except Exception as e:
             st.error(f"הניתוח נכשל: {e}")
-            st.write("טיפ: וודא שהמפתח תקין ושיש לך גישה ל-Gemini API.")
+            st.write("נסה לרענן את הדף או לבדוק את המפתח שוב.")
 
 # --- 5. גרף ---
 st.divider()
