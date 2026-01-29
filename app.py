@@ -7,11 +7,11 @@ import datetime
 
 # 1. הגדרות דף וריענון (כל 30 שניות)
 st.set_page_config(page_title="AI Trader Israel", layout="wide")
-st_autorefresh(interval=30000, key="final_v_fix")
+st_autorefresh(interval=30000, key="final_v_fix_authorized")
 
-# 2. פונקציית טלגרם עם הטוקן החדש מהצילום שלך
+# 2. פונקציית טלגרם עם הטוקן המעודכן ביותר
 def send_telegram(message):
-    # הטוקן המעודכן מהתמונה שלך
+    # הטוקן המדויק מהתמונה האחרונה שלך
     token = "8583393995:AAEhmun0shSH2QSa-U_MvVf7SvIo0tws0Q"
     chat_id = "1054735794" 
     
@@ -21,47 +21,47 @@ def send_telegram(message):
     try:
         response = requests.post(url, json=payload, timeout=5)
         if response.status_code == 200:
-            st.sidebar.success("✅ הודעה נשלחה בהצלחה!")
+            st.sidebar.success("✅ ההודעה הגיעה לטלגרם!")
         else:
-            error_msg = response.json().get('description', 'Unknown')
-            st.sidebar.error(f"❌ טלגרם מסרב: {error_msg}")
+            # כאן נראה אם השגיאה השתנתה מ-Unauthorized למשהו אחר
+            st.sidebar.error(f"❌ שגיאה מטלגרם: {response.json().get('description')}")
     except Exception as e:
-        st.sidebar.error(f"⚠️ תקלה בחיבור: {e}")
+        st.sidebar.error(f"⚠️ תקלה טכנית: {e}")
 
-# 3. שעון ישראל
+# 3. תצוגת זמן ושם הבוט
 israel_now = datetime.datetime.utcnow() + datetime.timedelta(hours=2)
-current_time = israel_now.strftime('%H:%M:%S')
-
-st.title("📈 מערכת מעקב מניות חכמה")
-st.write(f"🕒 שעון ישראל: **{current_time}**")
+st.title("📈 מערכת מסחר AI")
+st.info("וודא שלחצת START בתוך הבוט @eytanzafar_bot בטלגרם")
 
 # 4. סרגל צד
 with st.sidebar:
     st.header("⚙️ הגדרות")
     ticker = st.text_input("סימול מניה (למשל NVDA):", value="NVDA").upper().strip()
     st.divider()
-    target_price = st.number_input("שלח התראה כשהמחיר מעל ($):", value=0.0, step=0.01)
+    target_price = st.number_input("התראת מחיר מעל ($):", value=0.0, step=0.01)
     
-    if st.button("שלח הודעת בדיקה עכשיו"):
-        send_telegram(f"🔔 בדיקה מוצלחת! המערכת מחוברת ב-{current_time}")
+    if st.button("בדיקת חיבור עכשיו"):
+        send_telegram(f"🚀 המערכת מחוברת בהצלחה לבוט החדש שלך!")
 
-# 5. הצגת נתונים (מתוקן ללא שגיאות Syntax)
+# 5. הצגת נתונים וגרפים
 if ticker:
     try:
         stock = yf.Ticker(ticker)
+        # תיקון משיכת המחיר
         price = stock.fast_info['last_price']
         
-        st.metric(f"מחיר נוכחי {ticker}", f"${price:.2f}")
-
-        # שליחת התראה אוטומטית אם המחיר עובר את היעד
+        col1, col2 = st.columns(2)
+        col1.metric(f"מחיר {ticker}", f"${price:.2f}")
+        
+        # בדיקת התראה אוטומטית
         if target_price > 0 and price >= target_price:
-            send_telegram(f"🚀 יעד הושג! {ticker} הגיעה ל-${price:.2f}")
-            st.toast("התראה נשלחה לטלגרם!")
+            send_telegram(f"📢 {ticker} חצתה את מחיר היעד: ${price:.2f}")
+            st.toast("התראה נשלחה!")
 
-        # גרף
+        # גרף דקות
         data = stock.history(period="1d", interval="1m")
         if not data.empty:
             st.line_chart(data['Close'])
             
     except Exception as e:
-        st.error(f"לא ניתן למשוך נתונים עבור {ticker}")
+        st.error(f"שגיאה בהצגת נתונים. וודא שהסימול {ticker} תקין.")
