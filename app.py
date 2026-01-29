@@ -6,7 +6,7 @@ import google.generativeai as genai
 import requests
 from streamlit_autorefresh import st_autorefresh
 
-# --- 1. המפתחות שלך (מעודכן לפי התמונות) ---
+# --- 1. המפתחות האישיים שלך ---
 GEMINI_API_KEY = "AIzaSyD-xxxxxxxxxxxx-olo4" # המפתח מהתמונה שלך
 TELEGRAM_TOKEN = "8583393995:AAGdpAx-wh2l6pB2Pq4FL5lOhQev1GFacAk"
 CHAT_ID = "1054735794"
@@ -26,16 +26,22 @@ def send_telegram(message):
 
 def get_ai_analysis(ticker, news):
     if not news:
-        return "לא נמצאו חדשות עדכניות לניתוח."
+        return "לא נמצאו חדשות עדכניות לניתוח כרגע."
     
-    titles = [n['title'] for n in news[:5]]
-    prompt = (f"אתה אנליסט מניות מקצועי. נתח את מניית {ticker} לפי הכותרות הבאות: {titles}. "
-              f"כתוב המלצה קצרה בעברית (קנייה/מכירה/המתנה) והסבר למה בשתי שורות.")
+    # חילוץ כותרות בצורה בטוחה (תואם עדכוני 2025/2026)
+    titles = []
+    for n in news[:5]:
+        # בדיקה אם הכותרת נמצאת במיקום הישן או החדש של ה-API
+        title = n.get('title') or n.get('content', {}).get('title', 'אין כותרת')
+        titles.append(title)
+        
+    prompt = (f"אתה אנליסט מניות מומחה. נתח את מניית {ticker} לפי הכותרות הבאות: {titles}. "
+              f"סכם ב-3 שורות בעברית: האם זה זמן טוב לקנות, למכור או להמתין? הסבר למה.")
     try:
         response = ai_model.generate_content(prompt)
         return response.text
     except Exception as e:
-        return f"שגיאה בניתוח ה-AI: {e}"
+        return f"שגיאה בחיבור ל-AI: {e}"
 
 # --- 3. אבטחה וכניסה ---
 if "authenticated" not in st.session_state:
@@ -53,8 +59,8 @@ if not st.session_state.authenticated:
     st.stop()
 
 # --- 4. ממשק ראשי ---
-st.title("🚀 חדר מסחר AI של איתן")
-st_autorefresh(interval=60000, key="ai_final_v8")
+st.title("🚀 מערכת המסחר של איתן - AI Edition")
+st_autorefresh(interval=60000, key="ai_final_fixed")
 
 with st.sidebar:
     st.header("⚙️ הגדרות")
@@ -76,37 +82,29 @@ for t in ticker_list:
 
 if data_list:
     df = pd.DataFrame(data_list)
-    df.index = range(1, len(df) + 1) # מספור מתחיל ב-1
+    df.index = range(1, len(df) + 1)
     st.table(df)
 
 # --- 5. אזור הניתוח החכם ---
 st.divider()
-st.subheader("🤖 ייעוץ AI וחדשות")
-selected = st.selectbox("בחר מניה לניתוח עומק:", ticker_list)
+st.subheader("🤖 ניתוח חדשות ודוחות (AI)")
+selected = st.selectbox("בחר מניה לניתוח AI:", ticker_list)
 
-col1, col2 = st.columns(2)
-
-with col1:
-    if st.button(f"🔍 נתח את {selected} עכשיו"):
-        with st.spinner("ה-AI קורא ובוחן נתונים..."):
-            stock = yf.Ticker(selected)
-            analysis = get_ai_analysis(selected, stock.news)
-            st.info(analysis)
-            send_telegram(f"🤖 <b>ניתוח AI עבור {selected}:</b>\n{analysis}")
-
-with col2:
-    if st.button("📢 שלח דוח מצב לטלגרם"):
-        summary = "📊 <b>דוח מצב תיק מעקב:</b>\n"
-        for d in data_list:
-            summary += f"{d['מניה']}: {d['מחיר']} ({d['שינוי']})\n"
-        send_telegram(summary)
+if st.button(f"🔍 בצע ניתוח עומק ל-{selected}"):
+    with st.spinner(f"ה-AI סורק את הכותרות האחרונות על {selected}..."):
+        stock = yf.Ticker(selected)
+        # משיכת חדשות וניתוחן
+        analysis = get_ai_analysis(selected, stock.news)
+        st.info(analysis)
+        # שליחה אוטומטית לטלגרם
+        send_telegram(f"🤖 <b>המלצת AI ל-{selected}:</b>\n{analysis}")
 
 # --- 6. גרף מקצועי ---
 df_chart = yf.Ticker(selected).history(period="2d", interval="5m", prepost=True)
 if not df_chart.empty:
     fig = go.Figure(go.Scatter(x=df_chart.index, y=df_chart['Close'], 
-                               line=dict(color='#00d4ff', width=3),
-                               fill='tozeroy', fillcolor='rgba(0,212,255,0.1)'))
-    fig.update_layout(template="plotly_dark", height=450, title=f"גרף רציף: {selected}")
+                               line=dict(color='#00ffcc', width=3),
+                               fill='tozeroy', fillcolor='rgba(0,255,204,0.1)'))
+    fig.update_layout(template="plotly_dark", height=450, title=f"גרף {selected} (כולל מסחר מאוחר)")
     fig.update_yaxes(autorange=True, fixedrange=False)
     st.plotly_chart(fig, use_container_width=True)
