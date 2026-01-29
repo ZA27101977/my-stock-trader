@@ -13,7 +13,7 @@ st_autorefresh(interval=30 * 1000, key="live_update")
 # 2. פונקציית טלגרם - וודא שה-ID נכון
 def send_telegram(message):
     token = "8553256276:AAG2AWkV_cssOAnlWe8MUChR-MQ8VgFJ1ZY"
-    chat_id = "תכניס_כאן_מספר_בלבד" # למשל "12345678"
+    chat_id = "תכניס_כאן_מספר_בלבד" # למשל "1054735794"
     
     url = f"https://api.telegram.org/bot{token}/sendMessage?chat_id={chat_id}&text={message}"
     try:
