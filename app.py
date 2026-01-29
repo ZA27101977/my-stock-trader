@@ -2,45 +2,73 @@ import streamlit as st
 import yfinance as yf
 import plotly.graph_objects as go
 import pandas as pd
+from streamlit_autorefresh import st_autorefresh
 
-# (חלק האבטחה והטלגרם נשאר אותו דבר...)
+# 1. אבטחה (נשאר זהה)
+PASSWORD = "1234" 
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
 
+if not st.session_state.authenticated:
+    st.title("🔐 כניסה למערכת")
+    user_input = st.text_input("הכנס סיסמה:", type="password")
+    if st.button("כניסה"):
+        if user_input == PASSWORD:
+            st.session_state.authenticated = True
+            st.rerun()
+    st.stop()
+
+# 2. הגדרות רשימת מניות (חייב להופיע לפני הגרף!)
+with st.sidebar:
+    st.header("⚙️ הגדרות")
+    tickers_input = st.text_area("רשימת מניות (פסיק מפריד):", value="SPY, NVDA, TSLA, AAPL")
+    ticker_list = [t.strip().upper() for t in tickers_input.split(",")]
+    if st.button("יציאה"):
+        st.session_state.authenticated = False
+        st.rerun()
+
+st.title("📈 חדר מסחר מקצועי")
+st_autorefresh(interval=60000, key="fixed_v4")
+
+# 3. טבלה חיה
+watchlist_data = []
+for ticker in ticker_list:
+    try:
+        stock = yf.Ticker(ticker)
+        price = stock.fast_info['last_price']
+        prev_close = stock.fast_info['previous_close']
+        change = ((price - prev_close) / prev_close) * 100
+        watchlist_data.append({"מניה": ticker, "מחיר": f"${price:.2f}", "שינוי": f"{change:+.2f}%"})
+    except: continue
+
+if watchlist_data:
+    st.table(pd.DataFrame(watchlist_data))
+
+# 4. תיקון הגרף (ציר Y דינמי ונתוני 5 ימים)
 st.subheader("📊 ניתוח גרפי מתקדם")
-
-# תיבת בחירה מתוך הרשימה שלך
-selected_stock = st.selectbox("בחר מניה מהרשימה כדי לראות את הגרף שלה:", ticker_list)
+selected_stock = st.selectbox("בחר מניה לתצוגה:", ticker_list)
 
 if selected_stock:
-    # משיכת נתונים ל-5 הימים האחרונים כדי לוודא שהגרף לא יהיה ריק
-    stock_data = yf.Ticker(selected_stock)
-    df_chart = stock_data.history(period="5d", interval="15m")
-    
+    df_chart = yf.Ticker(selected_stock).history(period="5d", interval="15m")
     if not df_chart.empty:
         fig = go.Figure()
-        
-        # קביעת צבע לפי מחיר סגירה אחרון מול פתיחה
         is_up = df_chart['Close'].iloc[-1] >= df_chart['Open'].iloc[0]
-        line_color = 'green' if is_up else 'red'
         
         fig.add_trace(go.Scatter(
-            x=df_chart.index, 
-            y=df_chart['Close'],
-            line=dict(color=line_color, width=2),
+            x=df_chart.index, y=df_chart['Close'],
+            line=dict(color='green' if is_up else 'red', width=3),
             fill='tozeroy',
-            fillcolor='rgba(0,255,0,0.1)' if is_up else 'rgba(255,0,0,0.1)',
-            name=selected_stock
+            fillcolor='rgba(0,250,0,0.1)' if is_up else 'rgba(250,0,0,0.1)'
         ))
 
         fig.update_layout(
-            title=f"גרף 5 ימים: {selected_stock}",
+            title=f"גרף {selected_stock} - 5 ימים אחרונים",
+            yaxis_title="מחיר ($)",
             template="plotly_white",
-            height=450,
-            hovermode="x unified"
+            height=450
         )
         
-        # תיקון לציר ה-Y כדי שלא יתחיל מ-0 (ככה הגרף לא ייראה כמו קו ישר)
+        # השורה שמתקנת את ה"קו הישר" - גורמת לציר Y להתמקד במחיר
         fig.update_yaxes(autorange=True, fixedrange=False)
         
         st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.warning(f"לא נמצאו נתונים עבור {selected_stock}. נסה שוב בעוד כמה דקות.")
