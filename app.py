@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 
 # --- שלב 1: ניקוי והגדרת המפתח ---
 # המפתח שלך מהתמונה המסתיים ב-olo4
-RAW_KEY = "AIzaSyDB0p-o0pYWnS970VFvYFzUN0n8eU_olo4"
+RAW_KEY = "AIzaSyAppjGLjdtk5vOoFUBdxV6bZiqVfl8olo4"
 API_KEY = RAW_KEY.strip() # מסיר רווחים שעלולים לגרום ל-API_KEY_INVALID
 
 try:
@@ -43,16 +43,20 @@ st.title("📊 חדר מסחר מקצועי (תיקון סופי)")
 ticker_list = ["SPY", "NVDA", "TSLA", "AAPL"]
 data = []
 for t in ticker_list:
-    s = yf.Ticker(t).fast_info
-    data.append({"מניה": t, "מחיר": f"${s['last_price']:.2f}", "שינוי": f"{((s['last_price']-s['previous_close'])/s['previous_close'])*100:+.2f}%"})
+    try:
+        s = yf.Ticker(t).fast_info
+        data.append({"מניה": t, "מחיר": f"${s['last_price']:.2f}", "שינוי": f"{((s['last_price']-s['previous_close'])/s['previous_close'])*100:+.2f}%"})
+    except:
+        continue
 
-df = pd.DataFrame(data)
-df.index = range(1, len(df) + 1) # תיקון המספור שביקשת
-st.table(df)
+if data:
+    df = pd.DataFrame(data)
+    df.index = range(1, len(df) + 1) # תיקון המספור שביקשת בתמונה image_26abd4
+    st.table(df)
 
 # אזור הניתוח
 selected = st.selectbox("בחר מניה לניתוח AI:", ticker_list)
-if st.button(f"בצע ניתוח עומק ל-{selected}"):
+if st.button(f"בצע ניתוח עמוק ל-{selected}"):
     with st.spinner("ה-AI מנתח..."):
         res = analyze_stock(selected)
         st.info(res)
