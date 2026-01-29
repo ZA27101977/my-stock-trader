@@ -5,4 +5,3 @@ streamlit-autorefresh
 pandas
 plotly
 google-generativeai
-google-generativeai
