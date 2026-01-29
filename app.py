@@ -13,12 +13,16 @@ st_autorefresh(interval=30 * 1000, key="live_update")
 # 2. פונקציית טלגרם - וודא שה-ID נכון
 def send_telegram(message):
     token = "8553256276:AAG2AWkV_cssOAnlWe8MUChR-MQ8VgFJ1ZY"
-    chat_id = "ה-ID_שלך" # <--- כאן שים את המספר שקיבלת מ-userinfobot
+    chat_id = "תכניס_כאן_מספר_בלבד" # למשל "12345678"
+    
     url = f"https://api.telegram.org/bot{token}/sendMessage?chat_id={chat_id}&text={message}"
     try:
-        requests.get(url, timeout=5)
-    except:
-        pass
+        response = requests.get(url, timeout=5)
+        # זה יעזור לנו לראות אם הטלגרם מחזיר שגיאה
+        if response.status_code != 200:
+            st.error(f"שגיאת טלגרם: {response.text}")
+    except Exception as e:
+        st.error(f"שגיאת חיבור: {e}")
 
 # 3. חישוב זמן ישראל (UTC+2)
 israel_time = datetime.datetime.utcnow() + datetime.timedelta(hours=2)
