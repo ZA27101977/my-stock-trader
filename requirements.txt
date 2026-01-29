@@ -1,7 +1,7 @@
 streamlit
 yfinance
-requests
-streamlit-autorefresh
-pandas
 plotly
+pandas
 google-generativeai
+streamlit-autorefresh
+requests
