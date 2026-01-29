@@ -7,13 +7,13 @@ import requests
 import time
 from streamlit_autorefresh import st_autorefresh
 
-# --- 1. הגדרות בסיס ---
+# --- 1. הגדרות בסיס ואבטחה ---
 PASSWORD = "eitan2026" 
 API_KEY = "AIzaSyBHDnYafyU_ewuZj583NwENVrMNQyFbIvY"
 TELEGRAM_TOKEN = "8583393995:AAGdpAx-wh2l6pB2Pq4FL5lOhQev1GFacAk"
 CHAT_ID = "1054735794"
 
-# רשימות הנכסים המלאות
+# רשימות נכסים
 STOCKS = ["AAPL", "NVDA", "TSLA", "AMZN", "MSFT", "META", "GOOGL", "NFLX", "AMD", "INTC", "PLTR", "BABA", "COIN", "MARA", "JPM", "BAC", "V", "MA", "DIS", "NKE", "XOM", "CVX", "LLY", "UNH", "COST"]
 ETFS = ["SPY", "QQQ", "DIA", "IWM", "VOO", "VTI", "SMH", "SOXX", "IBIT", "FBTC", "ARKK", "XLF", "XLK", "XLV", "XLE", "XLI", "GLD", "SLV", "TLT", "BITO", "EEM", "VEU", "VNQ", "SCHD", "VIG"]
 
@@ -40,64 +40,74 @@ if check_password():
         try: requests.post(url, json={"chat_id": CHAT_ID, "text": msg, "parse_mode": "HTML"}, timeout=5)
         except: pass
 
-    st.set_page_config(page_title="Eitan's Terminal", layout="wide")
-    st_autorefresh(interval=60000, key="v22_refresh")
+    st.set_page_config(page_title="Eitan's Terminal Pro", layout="wide")
+    st_autorefresh(interval=60000, key="v23_refresh")
 
     if 'selected' not in st.session_state: st.session_state.selected = "SPY"
 
-    # --- 2. סידבר (תפריט צד) ---
+    # --- 2. סידבר ---
     with st.sidebar:
-        st.title("🛠️ תפריט שליטה")
-        search = st.text_input("🔎 חפש סימול חופשי:").upper()
+        st.title("🛠️ שליטה")
+        search = st.text_input("🔎 חיפוש חופשי:").upper()
         if st.button("טען"): st.session_state.selected = search
         
-        st.divider()
-        st.subheader("📌 בחירה מהירה")
-        all_options = STOCKS + ETFS
-        choice = st.selectbox("בחר מהרשימה המלאה:", [""] + sorted(all_options))
+        choice = st.selectbox("📌 בחירה מהירה:", [""] + sorted(STOCKS + ETFS))
         if choice: st.session_state.selected = choice
 
         st.divider()
         st.subheader("⭐ סורק טלגרם")
-        fav_input = st.text_area("מניות למעקב אוטומטי (פסיק):", value="NVDA, TSLA, SPY, QQQ, SMH")
+        fav_input = st.text_area("מניות למעקב אוטומטי:", value="NVDA, TSLA, SPY, QQQ, IBIT")
         fav_list = [x.strip().upper() for x in fav_input.split(",")]
 
-    # --- 3. תצוגה מרכזית ---
+    # --- 3. תצוגה מרכזית וגרף ---
     curr = st.session_state.selected
     st.title(f"🚀 ניתוח נכס: {curr}")
+
+    # בורר זמן ואינטרוול (הבקשה שלך)
+    col_p, col_i, col_empty = st.columns([1, 1, 2])
+    with col_p:
+        period = st.selectbox("טווח זמן:", ["1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y"], index=0)
+    with col_i:
+        interval = st.selectbox("רזולוציית נר:", ["1m", "5m", "15m", "30m", "60m", "1d", "1wk", "1mo"], index=1)
 
     col_chart, col_ai = st.columns([2, 1])
     
     with col_chart:
-        hist = yf.Ticker(curr).history(period="1d", interval="5m")
-        if not hist.empty:
-            fig = go.Figure(data=[go.Candlestick(x=hist.index, open=hist['Open'], high=hist['High'], low=hist['Low'], close=hist['Close'])])
-            fig.update_layout(template="plotly_dark", height=400, margin=dict(l=0, r=0, t=0, b=0))
-            st.plotly_chart(fig, use_container_width=True)
+        try:
+            hist = yf.Ticker(curr).history(period=period, interval=interval)
+            if not hist.empty:
+                fig = go.Figure(data=[go.Candlestick(
+                    x=hist.index, open=hist['Open'], high=hist['High'], low=hist['Low'], close=hist['Close']
+                )])
+                fig.update_layout(template="plotly_dark", height=450, margin=dict(l=0, r=0, t=0, b=0),
+                                 xaxis_rangeslider_visible=False)
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.warning("אין נתונים לטווח הזמן שנבחר.")
+        except Exception as e:
+            st.error(f"שגיאה בטעינת הגרף: {e}")
         
     with col_ai:
-        st.subheader("🤖 פעולת AI")
+        st.subheader("🤖 ניתוח AI")
         if st.button("בצע ניתוח טכני + המלצה"):
-            with st.spinner("מנתח גרף וחדשות..."):
+            with st.spinner("מנתח..."):
                 try:
                     stock = yf.Ticker(curr)
-                    h = stock.history(period="1d", interval="15m").tail(5).to_string()
+                    last_data = stock.history(period="1d", interval="15m").tail(3).to_string()
                     news = stock.news[0].get('title', "") if stock.news else "אין"
-                    prompt = f"Analyze {curr}. Price data: {h}. News: {news}. Give Buy/Sell recommendation in Hebrew."
+                    prompt = f"Analyze {curr}. Data: {last_data}. News: {news}. Recommend: Buy, Sell, or Wait in Hebrew."
                     resp = model.generate_content(prompt)
                     st.info(resp.text)
-                    send_telegram(f"🚀 <b>סיגנל ל-{curr}:</b>\n{resp.text}")
-                except: st.error("נסה שוב בעוד דקה.")
+                    send_telegram(f"🚀 <b>סיגנל {curr}:</b>\n{resp.text}")
+                except: st.error("מכסה מלאה, נסה שוב בעוד דקה.")
 
-    # --- 4. טבלאות ריכוז (כאן אתה תראה את כולם!) ---
+    # --- 4. טבלאות ריכוז ---
     st.divider()
-    st.header("📋 ריכוז נתוני שוק")
+    tab1, tab2 = st.tabs(["📊 כל המניות", "🌍 כל תעודות הסל"])
     
-    tab1, tab2 = st.tabs(["📊 כל המניות (25)", "🌍 כל תעודות הסל (25)"])
-    
-    def get_table_data(list_of_tickers):
+    def get_table_data(tickers):
         rows = []
-        for t in list_of_tickers:
+        for t in tickers:
             try:
                 inf = yf.Ticker(t).fast_info
                 p, c = inf['last_price'], ((inf['last_price'] - inf['previous_close']) / inf['previous_close']) * 100
@@ -106,7 +116,6 @@ if check_password():
         return pd.DataFrame(rows)
 
     with tab1:
-        st.dataframe(get_table_data(STOCKS), use_container_width=True, height=400)
-
+        st.dataframe(get_table_data(STOCKS), use_container_width=True)
     with tab2:
-        st.dataframe(get_table_data(ETFS), use_container_width=True, height=400)
+        st.dataframe(get_table_data(ETFS), use_container_width=True)
